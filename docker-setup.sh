@@ -445,6 +445,43 @@ else
   fi
 fi
 
+# === CRITICAL: Clean up existing containers BEFORE any docker compose commands ===
+# This prevents auto-start of containers during permission fixes or other operations
+echo ""
+echo "==> Cleaning up existing containers"
+echo "[INFO] Checking for existing containers..."
+
+# Use docker directly for more reliable container detection on all platforms
+EXISTING_CONTAINERS=$(docker ps -a --filter "name=openclaw.*gateway" --format "{{.Names}}" 2>&1 || true)
+
+if [[ -n "$EXISTING_CONTAINERS" ]]; then
+  echo "[INFO] Existing gateway container(s) detected:"
+  echo "$EXISTING_CONTAINERS" | while read -r container; do
+    echo "  - $container"
+  done
+  echo "[INFO] Stopping and removing containers..."
+  
+  # Force remove using docker compose down
+  docker compose "${COMPOSE_ARGS[@]}" down --remove-orphans 2>&1 || true
+  
+  # Wait for complete removal
+  sleep 2
+  
+  # Verify removal
+  STILL_EXISTS=$(docker ps -a --filter "name=openclaw.*gateway" --format "{{.Names}}" 2>&1 || true)
+  if [[ -n "$STILL_EXISTS" ]]; then
+    echo "[ERROR] Failed to remove container(s):"
+    echo "$STILL_EXISTS"
+    echo "[ERROR] Try manual cleanup: docker compose down --remove-orphans"
+    exit 1
+  fi
+  
+  echo "[OK] Containers removed successfully."
+else
+  echo "[INFO] No existing gateway containers found."
+fi
+# === End of container cleanup ===
+
 # Ensure bind-mounted data directories are writable by the container's `node`
 # user (uid 1000). Host-created dirs inherit the host user's uid which may
 # differ, causing EACCES when the container tries to mkdir/write.
@@ -492,7 +529,24 @@ echo "Docs: https://docs.openclaw.ai/channels"
 
 echo ""
 echo "==> Starting gateway"
+
+echo "[INFO] Starting gateway service..."
 docker compose "${COMPOSE_ARGS[@]}" up -d openclaw-gateway
+
+# Wait for gateway to become healthy before proceeding
+echo "[INFO] Waiting for gateway to stabilize (5 seconds)..."
+sleep 5
+
+# Check if gateway is still running after warm-up period
+if ! docker compose "${COMPOSE_ARGS[@]}" ps openclaw-gateway --format "{{.Status}}" 2>/dev/null | grep -q "running"; then
+  echo "[ERROR] Gateway failed to start properly. Checking logs..."
+  docker compose "${COMPOSE_ARGS[@]}" logs --tail=50 openclaw-gateway
+  echo ""
+  echo "[ERROR] Gateway health check failed. Please check configuration and try again." >&2
+  exit 1
+fi
+
+echo "[OK] Gateway started successfully."
 
 # --- Sandbox setup (opt-in via OPENCLAW_SANDBOX=1) ---
 if [[ -n "$SANDBOX_ENABLED" ]]; then
