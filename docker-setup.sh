@@ -412,13 +412,31 @@ upsert_env "$ENV_FILE" \
 
 if [[ "$IMAGE_NAME" == "openclaw:local" ]]; then
   echo "==> Building Docker image: $IMAGE_NAME"
-  docker build \
-    --build-arg "OPENCLAW_DOCKER_APT_PACKAGES=${OPENCLAW_DOCKER_APT_PACKAGES}" \
-    --build-arg "OPENCLAW_EXTENSIONS=${OPENCLAW_EXTENSIONS}" \
-    --build-arg "OPENCLAW_INSTALL_DOCKER_CLI=${OPENCLAW_INSTALL_DOCKER_CLI:-}" \
-    -t "$IMAGE_NAME" \
-    -f "$ROOT_DIR/Dockerfile" \
-    "$ROOT_DIR"
+  
+  # Check if image already exists
+  BUILD_IMAGE=true
+  if docker images --format "{{.Repository}}:{{.Tag}}" | grep -q "^${IMAGE_NAME}$"; then
+    echo "Local image '$IMAGE_NAME' already exists."
+    read -rp "Skip build and use existing image? [y/N]: " skip_build
+    if [[ ! "$skip_build" =~ ^[Yy]$ ]]; then
+      echo "Rebuilding image..."
+    else
+      echo "Using existing image."
+      BUILD_IMAGE=false
+    fi
+  else
+    echo "Building new image: $IMAGE_NAME"
+  fi
+  
+  if [[ "$BUILD_IMAGE" == "true" ]]; then
+    docker build \
+      --build-arg "OPENCLAW_DOCKER_APT_PACKAGES=${OPENCLAW_DOCKER_APT_PACKAGES}" \
+      --build-arg "OPENCLAW_EXTENSIONS=${OPENCLAW_EXTENSIONS}" \
+      --build-arg "OPENCLAW_INSTALL_DOCKER_CLI=${OPENCLAW_INSTALL_DOCKER_CLI:-}" \
+      -t "$IMAGE_NAME" \
+      -f "$ROOT_DIR/Dockerfile" \
+      "$ROOT_DIR"
+  fi
 else
   echo "==> Pulling Docker image: $IMAGE_NAME"
   if ! docker pull "$IMAGE_NAME"; then
