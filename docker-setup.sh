@@ -529,24 +529,7 @@ echo "Docs: https://docs.openclaw.ai/channels"
 
 echo ""
 echo "==> Starting gateway"
-
-echo "[INFO] Starting gateway service..."
 docker compose "${COMPOSE_ARGS[@]}" up -d openclaw-gateway
-
-# Wait for gateway to become healthy before proceeding
-echo "[INFO] Waiting for gateway to stabilize (5 seconds)..."
-sleep 5
-
-# Check if gateway is still running after warm-up period
-if ! docker compose "${COMPOSE_ARGS[@]}" ps openclaw-gateway --format "{{.Status}}" 2>/dev/null | grep -q "running"; then
-  echo "[ERROR] Gateway failed to start properly. Checking logs..."
-  docker compose "${COMPOSE_ARGS[@]}" logs --tail=50 openclaw-gateway
-  echo ""
-  echo "[ERROR] Gateway health check failed. Please check configuration and try again." >&2
-  exit 1
-fi
-
-echo "[OK] Gateway started successfully."
 
 # --- Sandbox setup (opt-in via OPENCLAW_SANDBOX=1) ---
 if [[ -n "$SANDBOX_ENABLED" ]]; then
