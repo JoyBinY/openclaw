@@ -18,6 +18,21 @@ import {
 } from "./monitor.state.js";
 import type { ResolvedFeishuAccount } from "./types.js";
 
+/** Hint when Feishu returns 400 on WebSocket connect: subscription mode must be "长连接" in console. */
+const FEISHU_WS_400_HINT =
+  " If using WebSocket mode, ensure in Feishu Open Platform: 事件与回调 → 事件 → 订阅方式 is set to \"使用长连接接收事件\" (long connection). Only self-built apps support long connection.";
+
+function enrichFeishuWsError(err: unknown): Error {
+  const msg = err instanceof Error ? err.message : String(err);
+  const is400 = /400|status code 400|Bad Request/i.test(msg);
+  const enriched = is400 ? `${msg}.${FEISHU_WS_400_HINT}` : msg;
+  const out = new Error(enriched);
+  if (err instanceof Error && err.cause !== undefined) {
+    out.cause = err.cause;
+  }
+  return out;
+}
+
 export type MonitorTransportParams = {
   account: ResolvedFeishuAccount;
   accountId: string;
@@ -61,12 +76,21 @@ export async function monitorWebSocket({
     abortSignal?.addEventListener("abort", handleAbort, { once: true });
 
     try {
-      wsClient.start({ eventDispatcher });
-      log(`feishu[${accountId}]: WebSocket client started`);
+      const startResult = wsClient.start({ eventDispatcher });
+      // SDK may return a Promise that rejects with 400 when subscription mode is not "长连接"
+      if (startResult && typeof (startResult as Promise<unknown>).then === "function") {
+        (startResult as Promise<unknown>).catch((err: unknown) => {
+          cleanup();
+          abortSignal?.removeEventListener("abort", handleAbort);
+          reject(enrichFeishuWsError(err));
+        });
+      } else {
+        log(`feishu[${accountId}]: WebSocket client started`);
+      }
     } catch (err) {
       cleanup();
       abortSignal?.removeEventListener("abort", handleAbort);
-      reject(err);
+      reject(enrichFeishuWsError(err));
     }
   });
 }

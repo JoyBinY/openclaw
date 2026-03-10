@@ -337,6 +337,13 @@ export const feishuOnboardingAdapter: ChannelOnboardingAdapter = {
       },
     };
 
+    if (connectionMode === "websocket") {
+      await prompter.note(
+        "In Feishu Open Platform set 事件与回调 → 事件 → 订阅方式 to \"使用长连接接收事件\". Long connection supports self-built apps only.",
+        "WebSocket (长连接) setup",
+      );
+    }
+
     if (connectionMode === "webhook") {
       const currentVerificationToken = (next.channels?.feishu as FeishuConfig | undefined)
         ?.verificationToken;
