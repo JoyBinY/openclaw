@@ -35,7 +35,10 @@ import {
   resolveAuthProfileOrder,
   type ResolvedProviderAuth,
 } from "../model-auth.js";
-import { normalizeProviderId } from "../model-selection.js";
+import {
+  normalizeProviderId,
+  resolveDefaultModelForAgent,
+} from "../model-selection.js";
 import { ensureOpenClawModelsJson } from "../models-config.js";
 import {
   formatBillingErrorMessage,
@@ -295,8 +298,16 @@ export async function runEmbeddedPiAgent(
       });
       const prevCwd = process.cwd();
 
-      let provider = (params.provider ?? DEFAULT_PROVIDER).trim() || DEFAULT_PROVIDER;
-      let modelId = (params.model ?? DEFAULT_MODEL).trim() || DEFAULT_MODEL;
+      // Use configured default for any missing provider/model so agents without
+      // Anthropic credentials use their configured provider (e.g. qwen-portal).
+      const configuredDefault = params.config
+        ? resolveDefaultModelForAgent({
+            cfg: params.config,
+            agentId: params.agentId ?? workspaceResolution.agentId,
+          })
+        : null;
+      let provider = (params.provider ?? configuredDefault?.provider ?? DEFAULT_PROVIDER).trim() || configuredDefault?.provider || DEFAULT_PROVIDER;
+      let modelId = (params.model ?? configuredDefault?.model ?? DEFAULT_MODEL).trim() || configuredDefault?.model || DEFAULT_MODEL;
       const agentDir = params.agentDir ?? resolveOpenClawAgentDir();
       const fallbackConfigured = hasConfiguredModelFallbacks({
         cfg: params.config,

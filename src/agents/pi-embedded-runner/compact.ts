@@ -37,6 +37,7 @@ import { resolveContextWindowInfo } from "../context-window-guard.js";
 import { ensureCustomApiRegistered } from "../custom-api-registry.js";
 import { formatUserTime, resolveUserTimeFormat, resolveUserTimezone } from "../date-time.js";
 import { DEFAULT_CONTEXT_TOKENS, DEFAULT_MODEL, DEFAULT_PROVIDER } from "../defaults.js";
+import { resolveConfiguredModelRef } from "../model-selection.js";
 import { resolveOpenClawDocsPath } from "../docs-path.js";
 import { getApiKeyForModel, resolveModelAuthMode } from "../model-auth.js";
 import { supportsModelTools } from "../model-tool-support.js";
@@ -298,8 +299,18 @@ export async function compactEmbeddedPiSessionDirect(
       modelId = compactionModelOverride;
     }
   } else {
-    provider = (params.provider ?? DEFAULT_PROVIDER).trim() || DEFAULT_PROVIDER;
-    modelId = (params.model ?? DEFAULT_MODEL).trim() || DEFAULT_MODEL;
+    // Use configured default when provider/model not set so compaction uses the
+    // same provider as the agent (e.g. qwen-portal) instead of hardcoded anthropic.
+    const configuredDefault =
+      params.config
+        ? resolveConfiguredModelRef({
+            cfg: params.config,
+            defaultProvider: DEFAULT_PROVIDER,
+            defaultModel: DEFAULT_MODEL,
+          })
+        : { provider: DEFAULT_PROVIDER, model: DEFAULT_MODEL };
+    provider = (params.provider ?? configuredDefault.provider).trim() || configuredDefault.provider;
+    modelId = (params.model ?? configuredDefault.model).trim() || configuredDefault.model;
   }
   const fail = (reason: string): EmbeddedPiCompactResult => {
     log.warn(
@@ -925,8 +936,16 @@ export async function compactEmbeddedPiSession(
         // Resolve token budget from model context window so the context engine
         // knows the compaction target.  The runner's afterTurn path passes this
         // automatically, but the /compact command path needs to compute it here.
-        const ceProvider = (params.provider ?? DEFAULT_PROVIDER).trim() || DEFAULT_PROVIDER;
-        const ceModelId = (params.model ?? DEFAULT_MODEL).trim() || DEFAULT_MODEL;
+        const ceDefault =
+          params.config
+            ? resolveConfiguredModelRef({
+                cfg: params.config,
+                defaultProvider: DEFAULT_PROVIDER,
+                defaultModel: DEFAULT_MODEL,
+              })
+            : { provider: DEFAULT_PROVIDER, model: DEFAULT_MODEL };
+        const ceProvider = (params.provider ?? ceDefault.provider).trim() || ceDefault.provider;
+        const ceModelId = (params.model ?? ceDefault.model).trim() || ceDefault.model;
         const agentDir = params.agentDir ?? resolveOpenClawAgentDir();
         const { model: ceModel } = resolveModel(ceProvider, ceModelId, agentDir, params.config);
         const ceCtxInfo = resolveContextWindowInfo({
